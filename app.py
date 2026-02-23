@@ -13,49 +13,59 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- STYLE CSS : CONTRASTE ET LISIBILITÉ ---
+# --- STYLE CSS : RÉGLAGE DE LA VISIBILITÉ ---
 st.markdown("""
     <style>
-    /* 1. MÉTRIQUES HAUT DE PAGE */
-    div[data-testid="metric-container"] {
-        background-color: #1E293B !important;
-        border: 1px solid #334155 !important;
-        padding: 20px;
-        border-radius: 12px;
+    /* Global Background to support dark professional theme */
+    .main {
+        background-color: #0e1117;
     }
-    /* Forcer le blanc pur pour le chiffre et le texte de la métrique */
-    [data-testid="stMetricValue"], [data-testid="stMetricValue"] div, [data-testid="stMetricValue"] p {
-        color: #FFFFFF !important;
+    
+    /* MÉTRIQUES : Correction du blanc sur blanc */
+    /* On cible le container pour lui donner un fond sombre contrasté */
+    [data-testid="stMetric"], div[data-testid="metric-container"] {
+        background-color: #1e293b !important;
+        border: 1px solid #334155 !important;
+        padding: 20px !important;
+        border-radius: 12px !important;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3) !important;
+    }
+    
+    /* On force la couleur blanche pur pour le chiffre (Value) */
+    [data-testid="stMetricValue"] div, [data-testid="stMetricValue"] p {
+        color: #ffffff !important;
         font-size: 1.8rem !important;
         font-weight: 700 !important;
     }
+    
+    /* On force la couleur claire pour le label */
     [data-testid="stMetricLabel"] p {
-        color: #94A3B8 !important;
+        color: #94a3b8 !important;
         font-size: 1rem !important;
     }
 
-    /* 2. FLUX GLOBAL (EXPANDERS) */
+    /* FLUX GLOBAL (EXPANDERS) : Lisibilité des titres et du texte */
     .stExpander {
         border: 1px solid #334155 !important;
-        background-color: #1A202C !important;
+        background-color: #1a202c !important;
         border-radius: 8px !important;
     }
     
-    /* Forcer la visibilité du titre de l'expander (@utilisateur | Date) */
+    /* Harmonisation de l'en-tête (@utilisateur | Date) pour éviter le blanc sur blanc */
     .stExpander summary p {
-        color: #FFFFFF !important;
+        color: #f1f5f9 !important;
         font-weight: 600 !important;
         font-size: 1.05rem !important;
     }
     
-    /* Couleur du texte à l'intérieur de l'analyse */
-    .stExpander div[data-testid="stExpanderDetails"] p {
-        color: #F1F5F9 !important;
+    /* Couleur du texte dans le corps de l'analyse */
+    .stExpander div[data-testid="stMarkdownContainer"] p {
+        color: #e2e8f0 !important;
     }
     
-    /* Visibilité de l'icône de flèche */
+    /* Icône de la flèche de l'expander */
     .stExpander summary svg {
-        fill: #FFFFFF !important;
+        fill: #f1f5f9 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -64,7 +74,7 @@ st.markdown("""
 @st.cache_resource
 def init_db():
     try:
-        # Récupération via Secrets Streamlit Cloud
+        # Récupération sécurisée via Secrets Streamlit Cloud
         key_dict = json.loads(st.secrets["textkey"])
         creds = service_account.Credentials.from_service_account_info(key_dict)
         return firestore.Client(credentials=creds, project=key_dict['project_id'])
@@ -77,7 +87,7 @@ db = init_db()
 # --- CHARGEMENT DES DONNÉES ---
 def load_data():
     if db is None: return []
-    # On utilise 'date' conformément à ton code fonctionnel
+    # On utilise 'date' et limit(100) pour respecter ta structure de données
     docs = db.collection('veilles_financieres').order_by(
         'date', direction=firestore.Query.DESCENDING
     ).limit(100).stream()
@@ -89,6 +99,7 @@ if not raw_data:
     st.title("📉 MarketPulse")
     st.info("Connexion établie avec Firestore. En attente de données...")
 else:
+    # 1. Préparation des données
     df = pd.DataFrame(raw_data)
     df['dt'] = pd.to_datetime(df['date'])
     df['jour'] = df['dt'].dt.date
@@ -103,6 +114,7 @@ else:
     with m2:
         st.metric("Sources Actives", len(df['source'].unique()))
     with m3:
+        # Nettoyage des tickers pour le calcul du top
         all_tickers = df.explode('tickers')['tickers'].dropna().str.replace('$', '', regex=False)
         top_val = f"${all_tickers.mode()[0]}" if not all_tickers.empty else "N/A"
         st.metric("Ticker le plus cité", top_val)
@@ -144,6 +156,7 @@ else:
         fig_pie.update_layout(margin=dict(l=0, r=0, t=20, b=0))
         st.plotly_chart(fig_pie, use_container_width=True)
 
+    # Graphique de volume temporel
     st.subheader("📅 Intensité de l'Activité")
     daily_vol = df.groupby('jour').size().reset_index(name='Volume')
     fig_line = px.line(daily_vol, x='jour', y='Volume', markers=True, template="plotly_dark")
@@ -165,7 +178,7 @@ else:
         for _, row in df_display.iterrows():
             with st.expander(f"@{row['source']} | {row['dt'].strftime('%d/%m %H:%M')}"):
                 if row.get('tickers'):
-                    st.write(f"**Focus :** `{'`, `'.join(row['tickers'])}`")
+                    st.write(f"**Focus :** {', '.join(row['tickers'])}")
                 st.write(row['texte'])
                 st.caption(f"ID : {row['id']}")
 
