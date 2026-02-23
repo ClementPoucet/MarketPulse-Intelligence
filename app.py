@@ -13,40 +13,44 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- STYLE CSS : LISIBILITÉ ET CONTRASTE HARMONISÉ ---
+# --- STYLE CSS : CONTRASTE ET LISIBILITÉ ---
 st.markdown("""
     <style>
-    /* 1. MÉTRIQUES : Correction du texte à l'intérieur du paragraphe (image_d4c05e.png) */
+    /* 1. MÉTRIQUES HAUT DE PAGE */
     div[data-testid="metric-container"] {
         background-color: #1E293B !important;
         border: 1px solid #334155 !important;
         padding: 20px;
         border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
     }
-    [data-testid="stMetricValue"] p {
-        color: #FFFFFF !important; /* Force le blanc pur pour le chiffre */
+    /* Forcer le blanc pur pour le chiffre et le texte de la métrique */
+    [data-testid="stMetricValue"], [data-testid="stMetricValue"] div, [data-testid="stMetricValue"] p {
+        color: #FFFFFF !important;
         font-size: 1.8rem !important;
         font-weight: 700 !important;
     }
-    [data-testid="stMetricLabel"] {
+    [data-testid="stMetricLabel"] p {
         color: #94A3B8 !important;
         font-size: 1rem !important;
     }
 
-    /* 2. FLUX GLOBAL (EXPANDERS) : Correction de l'en-tête (image_d3eec7.png) */
+    /* 2. FLUX GLOBAL (EXPANDERS) */
     .stExpander {
         border: 1px solid #334155 !important;
         background-color: #1A202C !important;
+        border-radius: 8px !important;
     }
-    /* Forcer la couleur du texte dans l'en-tête (@utilisateur | Date) */
+    
+    /* Forcer la visibilité du titre de l'expander (@utilisateur | Date) */
     .stExpander summary p {
-        color: #FFFFFF !important; /* Blanc pur pour la lecture directe */
+        color: #FFFFFF !important;
         font-weight: 600 !important;
+        font-size: 1.05rem !important;
     }
-    /* Forcer la couleur du texte à l'intérieur (le corps du tweet) */
+    
+    /* Couleur du texte à l'intérieur de l'analyse */
     .stExpander div[data-testid="stExpanderDetails"] p {
-        color: #F1F5F9 !important; /* Blanc cassé pour le confort visuel */
+        color: #F1F5F9 !important;
     }
     
     /* Visibilité de l'icône de flèche */
@@ -60,7 +64,7 @@ st.markdown("""
 @st.cache_resource
 def init_db():
     try:
-        # Récupération sécurisée via Streamlit Cloud
+        # Récupération via Secrets Streamlit Cloud
         key_dict = json.loads(st.secrets["textkey"])
         creds = service_account.Credentials.from_service_account_info(key_dict)
         return firestore.Client(credentials=creds, project=key_dict['project_id'])
@@ -73,9 +77,9 @@ db = init_db()
 # --- CHARGEMENT DES DONNÉES ---
 def load_data():
     if db is None: return []
-    # On récupère les 100 dernières entrées basées sur ton index
+    # On utilise 'date' conformément à ton code fonctionnel
     docs = db.collection('veilles_financieres').order_by(
-        'date_extraction', direction=firestore.Query.DESCENDING
+        'date', direction=firestore.Query.DESCENDING
     ).limit(100).stream()
     return [doc.to_dict() for doc in docs]
 
@@ -85,9 +89,8 @@ if not raw_data:
     st.title("📉 MarketPulse")
     st.info("Connexion établie avec Firestore. En attente de données...")
 else:
-    # 1. Préparation des données
     df = pd.DataFrame(raw_data)
-    df['dt'] = pd.to_datetime(df['date_extraction'])
+    df['dt'] = pd.to_datetime(df['date'])
     df['jour'] = df['dt'].dt.date
 
     # --- HEADER & MÉTRIQUES ---
@@ -162,7 +165,7 @@ else:
         for _, row in df_display.iterrows():
             with st.expander(f"@{row['source']} | {row['dt'].strftime('%d/%m %H:%M')}"):
                 if row.get('tickers'):
-                    st.write(f"**Focus :** {', '.join(row['tickers'])}")
+                    st.write(f"**Focus :** `{'`, `'.join(row['tickers'])}`")
                 st.write(row['texte'])
                 st.caption(f"ID : {row['id']}")
 
