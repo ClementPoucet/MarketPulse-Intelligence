@@ -1,4 +1,6 @@
 streamlit
 google-cloud-firestore
-google-auth
+google-generativeai
 pandas
+yfinance
+google-auth
