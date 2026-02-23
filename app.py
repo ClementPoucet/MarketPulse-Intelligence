@@ -4,21 +4,32 @@ from google.oauth2 import service_account
 import json
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime
 
 # --- CONFIGURATION DE LA PAGE ---
 st.set_page_config(
-    page_title="MarketPulse | Intelligence Marché",
-    page_icon="📈",
+    page_title="MarketPulse | Intelligence IA",
+    page_icon="📉",
     layout="wide"
 )
 
-# --- STYLE CSS PERSONNALISÉ ---
+# --- STYLE CSS POUR LA LISIBILITÉ ---
 st.markdown("""
     <style>
-    .main { background-color: #0e1117; }
-    .stMetric { background-color: #1e2130; padding: 15px; border-radius: 10px; }
+    /* Amélioration du contraste des métriques */
+    [data-testid="stMetricValue"] {
+        color: #FFFFFF !important;
+        font-size: 1.8rem !important;
+    }
+    [data-testid="stMetricLabel"] {
+        color: #A0AEC0 !important;
+    }
+    div[data-testid="metric-container"] {
+        background-color: #1A202C;
+        border: 1px solid #2D3748;
+        padding: 15px;
+        border-radius: 10px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -26,145 +37,102 @@ st.markdown("""
 @st.cache_resource
 def init_db():
     try:
-        # Utilisation du secret 'textkey' configuré sur Streamlit Cloud
+        # Priorité aux secrets Streamlit Cloud
         key_dict = json.loads(st.secrets["textkey"])
         creds = service_account.Credentials.from_service_account_info(key_dict)
         return firestore.Client(credentials=creds, project=key_dict['project_id'])
-    except Exception as e:
-        st.error(f"Erreur de configuration des secrets : {e}")
-        return None
+    except:
+        # Fallback local
+        return firestore.Client.from_service_account_json("service-account.json")
 
 db = init_db()
 
 # --- CHARGEMENT DES DONNÉES ---
 def load_data():
-    if db is None: return []
-    # On récupère les 100 dernières entrées
+    # Utilisation du champ 'date_extraction' comme validé par ton index composite
     docs = db.collection('veilles_financieres').order_by(
-        'date', direction=firestore.Query.DESCENDING
+        'date_extraction', direction=firestore.Query.DESCENDING
     ).limit(100).stream()
     return [doc.to_dict() for doc in docs]
 
 raw_data = load_data()
 
-# --- CORPS PRINCIPAL ---
 if not raw_data:
-    st.title("📈 FinSight Alpha")
-    st.info("En attente de données en provenance de Firestore. Lancez votre pipeline d'ingestion.")
+    st.title("MarketPulse")
+    st.info("Connexion établie. En attente de données...")
 else:
     df = pd.DataFrame(raw_data)
-    # Conversion de la colonne date en objets datetime pour les graphiques
-    df['date_dt'] = pd.to_datetime(df['date'])
-    df['jour'] = df['date_dt'].dt.date
-
-    # --- SIDEBAR (FILTRES) ---
-    st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2585/2585092.png", width=100)
-    st.sidebar.title("Configuration")
+    # Harmonisation des dates
+    df['dt'] = pd.to_datetime(df['date_extraction'])
     
-    sources = sorted(df['source'].unique())
-    selected_sources = st.sidebar.multiselect("Filtrer par Analyste", sources, default=sources)
-    
-    df_filtered = df[df['source'].isin(selected_sources)]
-
-    # --- TITRE ET MÉTRIQUES ---
-    st.title("📈 FinSight Alpha Dashboard")
-    st.subheader("Analyse quantitative des thèses de marché")
+    # --- HEADER & MÉTRIQUES ---
+    st.title("📉 MarketPulse")
+    st.caption("Terminal d'intelligence financière alimenté par Gemini 2.5 Flash")
 
     m1, m2, m3, m4 = st.columns(4)
     with m1:
-        st.metric("Total Analyses", len(df))
+        st.metric("Analyses", len(df))
     with m2:
-        st.metric("Analystes Actifs", len(df['source'].unique()))
+        st.metric("Sources", len(df['source'].unique()))
     with m3:
-        top_ticker = df.explode('tickers')['tickers'].mode()[0] if not df.explode('tickers').empty else "N/A"
-        st.metric("Ticker le plus cité", top_ticker)
+        # Calcul du ticker le plus cité (en ignorant le $)
+        all_t = df.explode('tickers')['tickers'].dropna().str.replace('$', '', regex=False)
+        top = f"${all_t.mode()[0]}" if not all_t.empty else "N/A"
+        st.metric("Top Ticker", top)
     with m4:
-        st.metric("Dernière mise à jour", df['date_dt'].iloc[0].strftime("%H:%M:%S"))
+        st.metric("MàJ", df['dt'].iloc[0].strftime("%H:%M"))
 
     st.markdown("---")
 
-    # --- SECTION VISUALISATIONS ---
-    col_left, col_right = st.columns(2)
+    # --- VISUALISATIONS ---
+    c1, c2 = st.columns([2, 1])
+    
+    with c1:
+        st.subheader("🔥 Concentration des Actifs")
+        df_t = df.explode('tickers').dropna()
+        if not df_t.empty:
+            counts = df_t['tickers'].value_counts().reset_index()
+            counts.columns = ['Ticker', 'Mentions']
+            fig = px.bar(counts.head(10), x='Mentions', y='Ticker', orientation='h',
+                         color='Mentions', color_continuous_scale='Blues', template="plotly_dark")
+            fig.update_layout(yaxis={'categoryorder':'total ascending'}, margin=dict(l=0, r=0, t=20, b=0))
+            st.plotly_chart(fig, use_container_width=True)
 
-    with col_left:
-        # 1. Histogramme des Tickers les plus cités
-        st.markdown("#### 🔥 Concentration des Actifs")
-        df_tickers = df_filtered.explode('tickers')
-        if not df_tickers['tickers'].dropna().empty:
-            ticker_counts = df_tickers['tickers'].value_counts().reset_index()
-            ticker_counts.columns = ['Ticker', 'Mentions']
-            fig_tickers = px.bar(
-                ticker_counts.head(12), 
-                x='Mentions', y='Ticker', 
-                orientation='h',
-                color='Mentions',
-                color_continuous_scale='Blues',
-                template="plotly_dark"
-            )
-            fig_tickers.update_layout(yaxis={'categoryorder':'total ascending'}, margin=dict(l=20, r=20, t=30, b=20))
-            st.plotly_chart(fig_tickers, use_container_width=True)
-        else:
-            st.write("Aucun ticker détecté sur la période.")
-
-    with col_right:
-        # 2. Répartition de l'activité par Source
-        st.markdown("#### 🗣️ Part de Voix par Analyste")
-        source_counts = df_filtered['source'].value_counts().reset_index()
-        source_counts.columns = ['Auteur', 'Nombre']
-        fig_pie = px.pie(
-            source_counts, 
-            values='Nombre', names='Auteur',
-            hole=0.4,
-            template="plotly_dark",
-            color_discrete_sequence=px.colors.qualitative.Pastel
-        )
-        fig_pie.update_layout(margin=dict(l=20, r=20, t=30, b=20))
+    with c2:
+        st.subheader("🗣️ Part de Voix")
+        src_counts = df['source'].value_counts()
+        fig_pie = px.pie(values=src_counts.values, names=src_counts.index, hole=0.4, template="plotly_dark")
+        fig_pie.update_layout(margin=dict(l=0, r=0, t=20, b=0))
         st.plotly_chart(fig_pie, use_container_width=True)
 
-    # 3. Graphique Temporel (Volume d'extractions)
-    st.markdown("#### 📅 Intensité de l'Activité")
-    daily_activity = df_filtered.groupby('jour').size().reset_index(name='Volume')
-    fig_time = px.line(
-        daily_activity, 
-        x='jour', y='Volume',
-        title="Volume d'analyses quotidiennes",
-        template="plotly_dark",
-        markers=True
-    )
-    fig_time.update_traces(line_color='#00d1b2')
-    st.plotly_chart(fig_time, use_container_width=True)
-
+    # --- RECHERCHE ET FLUX ---
     st.markdown("---")
+    tab1, tab2 = st.tabs(["📑 Flux Global", "🔍 Recherche Ticker"])
 
-    # --- SECTION FLUX DE DONNÉES ---
-    st.markdown("### 📝 Flux des Thèses d'Investissement")
-    
-    # On utilise des tabs pour organiser par auteur ou voir tout le flux
-    tab_all, tab_search = st.tabs(["Tout le flux", "Recherche par Ticker"])
+    with tab1:
+        # Filtre latéral
+        src_filter = st.multiselect("Filtrer les analystes", df['source'].unique(), default=df['source'].unique())
+        for _, row in df[df['source'].isin(src_filter)].iterrows():
+            with st.expander(f"@{row['source']} | {row['dt'].strftime('%d/%m %H:%M')}"):
+                st.write(f"**Focus :** {', '.join(row['tickers']) if row['tickers'] else 'Macro'}")
+                st.write(row['texte'])
 
-    with tab_all:
-        for index, row in df_filtered.iterrows():
-            with st.expander(f"@{row['source']} | {row['date_dt'].strftime('%d/%m/%Y %H:%M')}"):
-                col_t1, col_t2 = st.columns([1, 4])
-                with col_t1:
-                    if row['tickers']:
-                        for t in row['tickers']:
-                            st.info(f"**{t}**")
-                    else:
-                        st.write("Aucun ticker")
-                with col_t2:
-                    st.write(row['texte'])
-                    st.caption(f"ID : {row['id']}")
+    with tab2:
+        query = st.text_input("Symbole (ex: MU, NVDA, PANW)").upper().strip().replace('$', '')
+        if query:
+            # On cherche si la version "nettoyée" du ticker match avec la saisie
+            def contains_ticker(ticker_list, target):
+                if not isinstance(ticker_list, list): return False
+                clean_list = [t.replace('$', '').upper() for t in ticker_list]
+                return target in clean_list
 
-    with tab_search:
-        search_ticker = st.text_input("Entrez un ticker (ex: NVDA)").upper().replace('$', '')
-        if search_ticker:
-            mask = df_filtered['tickers'].apply(lambda x: search_ticker in x if isinstance(x, list) else False)
-            results = df_filtered[mask]
+            results = df[df['tickers'].apply(lambda x: contains_ticker(x, query))]
+            
             if not results.empty:
+                st.success(f"{len(results)} analyses trouvées pour ${query}")
                 for _, row in results.iterrows():
-                    st.write(f"**{row['source']}** ({row['date_dt'].strftime('%d/%m')})")
+                    st.write(f"**{row['source']}** ({row['dt'].strftime('%d/%m')})")
                     st.write(row['texte'])
                     st.markdown("---")
             else:
-                st.write("Aucune mention trouvée pour ce ticker.")
+                st.warning(f"Aucune mention de ${query} trouvée dans les 100 derniers tweets.")
