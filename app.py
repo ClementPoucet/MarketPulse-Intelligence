@@ -25,7 +25,7 @@ st.markdown("""
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
     }
     [data-testid="stMetricValue"] {
-        color: #FFFFFF !important;
+        color: #F8FAFC !important;
         font-size: 1.8rem !important;
         font-weight: 700;
     }
