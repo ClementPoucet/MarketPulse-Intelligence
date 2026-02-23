@@ -13,10 +13,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- STYLE CSS : HARMONISATION ET LISIBILITÉ TOTALE ---
+# --- STYLE CSS : LISIBILITÉ ET CONTRASTE HARMONISÉ ---
 st.markdown("""
     <style>
-    /* 1. MÉTRIQUES : Fond ardoise profond et texte blanc pur */
+    /* 1. MÉTRIQUES : Correction du texte à l'intérieur du paragraphe (image_d4c05e.png) */
     div[data-testid="metric-container"] {
         background-color: #1E293B !important;
         border: 1px solid #334155 !important;
@@ -24,46 +24,34 @@ st.markdown("""
         border-radius: 12px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
     }
-    [data-testid="stMetricValue"] {
-        color: #F8FAFC !important;
+    [data-testid="stMetricValue"] p {
+        color: #FFFFFF !important; /* Force le blanc pur pour le chiffre */
         font-size: 1.8rem !important;
-        font-weight: 700;
+        font-weight: 700 !important;
     }
     [data-testid="stMetricLabel"] {
         color: #94A3B8 !important;
         font-size: 1rem !important;
     }
 
-    /* 2. FLUX GLOBAL (EXPANDERS) */
+    /* 2. FLUX GLOBAL (EXPANDERS) : Correction de l'en-tête (image_d3eec7.png) */
     .stExpander {
         border: 1px solid #334155 !important;
-        background-color: #0F172A !important;
-        border-radius: 8px !important;
-        margin-bottom: 10px !important;
+        background-color: #1A202C !important;
     }
-    
-    /* Couleur du bandeau (summary) : @utilisateur | Date */
+    /* Forcer la couleur du texte dans l'en-tête (@utilisateur | Date) */
     .stExpander summary p {
-        color: #F8FAFC !important;
+        color: #FFFFFF !important; /* Blanc pur pour la lecture directe */
         font-weight: 600 !important;
     }
-    
-    /* Couleur du texte à l'intérieur de l'analyse (le tweet) */
+    /* Forcer la couleur du texte à l'intérieur (le corps du tweet) */
     .stExpander div[data-testid="stExpanderDetails"] p {
-        color: #F1F5F9 !important;
-        font-size: 1rem !important;
-        line-height: 1.6 !important;
-    }
-    
-    /* Couleur spécifique pour les ID de tweets (captions) */
-    .stExpander [data-testid="stCaptionContainer"] p {
-        color: #94A3B8 !important;
-        font-size: 0.85rem !important;
+        color: #F1F5F9 !important; /* Blanc cassé pour le confort visuel */
     }
     
     /* Visibilité de l'icône de flèche */
     .stExpander summary svg {
-        fill: #F8FAFC !important;
+        fill: #FFFFFF !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -72,6 +60,7 @@ st.markdown("""
 @st.cache_resource
 def init_db():
     try:
+        # Récupération sécurisée via Streamlit Cloud
         key_dict = json.loads(st.secrets["textkey"])
         creds = service_account.Credentials.from_service_account_info(key_dict)
         return firestore.Client(credentials=creds, project=key_dict['project_id'])
@@ -86,7 +75,7 @@ def load_data():
     if db is None: return []
     # On récupère les 100 dernières entrées basées sur ton index
     docs = db.collection('veilles_financieres').order_by(
-        'date', direction=firestore.Query.DESCENDING
+        'date_extraction', direction=firestore.Query.DESCENDING
     ).limit(100).stream()
     return [doc.to_dict() for doc in docs]
 
@@ -94,11 +83,11 @@ raw_data = load_data()
 
 if not raw_data:
     st.title("📉 MarketPulse")
-    st.info("Connexion établie avec Firestore. En attente de la première ingestion de données...")
+    st.info("Connexion établie avec Firestore. En attente de données...")
 else:
     # 1. Préparation des données
     df = pd.DataFrame(raw_data)
-    df['dt'] = pd.to_datetime(df['date'])
+    df['dt'] = pd.to_datetime(df['date_extraction'])
     df['jour'] = df['dt'].dt.date
 
     # --- HEADER & MÉTRIQUES ---
@@ -111,7 +100,6 @@ else:
     with m2:
         st.metric("Sources Actives", len(df['source'].unique()))
     with m3:
-        # Nettoyage des tickers pour le calcul du top
         all_tickers = df.explode('tickers')['tickers'].dropna().str.replace('$', '', regex=False)
         top_val = f"${all_tickers.mode()[0]}" if not all_tickers.empty else "N/A"
         st.metric("Ticker le plus cité", top_val)
@@ -153,7 +141,6 @@ else:
         fig_pie.update_layout(margin=dict(l=0, r=0, t=20, b=0))
         st.plotly_chart(fig_pie, use_container_width=True)
 
-    # Graphique de volume temporel
     st.subheader("📅 Intensité de l'Activité")
     daily_vol = df.groupby('jour').size().reset_index(name='Volume')
     fig_line = px.line(daily_vol, x='jour', y='Volume', markers=True, template="plotly_dark")
