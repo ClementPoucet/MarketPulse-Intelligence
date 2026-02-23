@@ -13,10 +13,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- STYLE CSS : LISIBILITÉ ET CONTRASTE ---
+# --- STYLE CSS : HARMONISATION ET LISIBILITÉ TOTALE ---
 st.markdown("""
     <style>
-    /* Forçage du contraste des métriques (Haut de page) */
+    /* 1. MÉTRIQUES : Fond ardoise profond et texte blanc pur */
     div[data-testid="metric-container"] {
         background-color: #1E293B !important;
         border: 1px solid #334155 !important;
@@ -34,15 +34,36 @@ st.markdown("""
         font-size: 1rem !important;
     }
 
-    /* Correction lisibilité du Flux Global (Expanders) */
+    /* 2. FLUX GLOBAL (EXPANDERS) */
     .stExpander {
         border: 1px solid #334155 !important;
-        background-color: #1A202C !important;
+        background-color: #0F172A !important;
+        border-radius: 8px !important;
+        margin-bottom: 10px !important;
     }
-    /* Forcer la couleur du titre de l'expander */
+    
+    /* Couleur du bandeau (summary) : @utilisateur | Date */
     .stExpander summary p {
-        color: #F1F5F9 !important;
+        color: #F8FAFC !important;
         font-weight: 600 !important;
+    }
+    
+    /* Couleur du texte à l'intérieur de l'analyse (le tweet) */
+    .stExpander div[data-testid="stExpanderDetails"] p {
+        color: #F1F5F9 !important;
+        font-size: 1rem !important;
+        line-height: 1.6 !important;
+    }
+    
+    /* Couleur spécifique pour les ID de tweets (captions) */
+    .stExpander [data-testid="stCaptionContainer"] p {
+        color: #94A3B8 !important;
+        font-size: 0.85rem !important;
+    }
+    
+    /* Visibilité de l'icône de flèche */
+    .stExpander summary svg {
+        fill: #F8FAFC !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -51,7 +72,6 @@ st.markdown("""
 @st.cache_resource
 def init_db():
     try:
-        # Récupération sécurisée via Streamlit Cloud
         key_dict = json.loads(st.secrets["textkey"])
         creds = service_account.Credentials.from_service_account_info(key_dict)
         return firestore.Client(credentials=creds, project=key_dict['project_id'])
@@ -105,7 +125,6 @@ else:
 
     with col_v1:
         st.subheader("🔥 Concentration des Tickers")
-        # On explose la liste pour compter chaque ticker individuellement
         df_tickers = df.explode('tickers').dropna()
         if not df_tickers.empty:
             counts = df_tickers['tickers'].value_counts().reset_index()
@@ -165,7 +184,6 @@ else:
         query = st.text_input("Symbole (ex: NVDA, MU, BTC)").upper().strip().replace('$', '')
         
         if query:
-            # Fonction de recherche insensible au symbole '$'
             def check_ticker(t_list, target):
                 if not isinstance(t_list, list): return False
                 return any(target == t.replace('$', '').upper() for t in t_list)
